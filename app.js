@@ -94,6 +94,46 @@ async function handleSearchSubmit(e) {
 
 // Known Verified Contracts Registry (Matches real launchpad schedules)
 const VERIFIED_CONTRACTS = {
+    "0x4aa2749f4eb297bbf9d3b78f979a923b7b92aa42": {
+        name: "Blanks 🌟",
+        contract: "0x4aa2749f4eb297bbf9d3b78f979a923b7b92aa42",
+        network: "robinhood",
+        thumb: "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=200&auto=format&fit=crop&q=80",
+        supply: "400",
+        verified: true,
+        phases: [
+            {
+                id: "b1",
+                name: "blanks",
+                type: "Public",
+                startTime: Date.parse("2026-09-11T23:00:00+08:00"),
+                endTime: Date.parse("2026-09-12T00:00:00+08:00"),
+                priceEth: "0.00",
+                priceUsd: "FREE",
+                limit: "1 PER WALLET"
+            }
+        ]
+    },
+    "0xda8375bc49359ee666b014e1eb44ecba6a3c3c30": {
+        name: "Blanks 🌟",
+        contract: "0xda8375bc49359ee666b014e1eb44ecba6a3c3c30",
+        network: "robinhood",
+        thumb: "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=200&auto=format&fit=crop&q=80",
+        supply: "400",
+        verified: true,
+        phases: [
+            {
+                id: "b2",
+                name: "blanks",
+                type: "Public",
+                startTime: Date.parse("2026-09-11T23:00:00+08:00"),
+                endTime: Date.parse("2026-09-12T00:00:00+08:00"),
+                priceEth: "0.00",
+                priceUsd: "FREE",
+                limit: "1 PER WALLET"
+            }
+        ]
+    },
     "0xca94e274d769f988f74e2a73cc87d333ee2a3249": {
         name: "PEPE EXPLORERS",
         contract: "0xca94e274d769f988f74e2a73cc87d333ee2a3249",
@@ -218,16 +258,17 @@ async function fetchMintScheduleFromAPI(address, network) {
     }
 
     // 2. Perform Multi-RPC Query for On-Chain Contract Metadata & Claim Conditions
-    const rpcList = MULTI_RPC_NODES[network] || MULTI_RPC_NODES.base;
+    const rpcList = MULTI_RPC_NODES[network] || MULTI_RPC_NODES.robinhood;
     let collectionName = null;
     let claimData = null;
 
     for (const rpcUrl of rpcList) {
         try {
-            // Batch RPC Request: 1) name(), 2) getActiveClaimCondition() or claimConditions(0)
+            // Batch RPC Request: 1) name(), 2) getActiveClaimCondition() or Megashot mintStartTime()
             const batchBody = [
                 { jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: cleanAddr, data: "0x06fdde03" }, "latest"] },
-                { jsonrpc: "2.0", id: 2, method: "eth_call", params: [{ to: cleanAddr, data: "0x696b9961" }, "latest"] }
+                { jsonrpc: "2.0", id: 2, method: "eth_call", params: [{ to: cleanAddr, data: "0x696b9961" }, "latest"] },
+                { jsonrpc: "2.0", id: 3, method: "eth_call", params: [{ to: cleanAddr, data: "0x31a293ee" }, "latest"] }
             ];
 
             const res = await fetch(rpcUrl, {
@@ -244,62 +285,46 @@ async function fetchMintScheduleFromAPI(address, network) {
                     collectionName = parseABIString(results[0].result);
                 }
 
-                // Parse Claim Condition
+                // Parse Claim Condition or Megashot Start Time
                 if (results[1] && results[1].result && results[1].result !== "0x") {
                     claimData = parseThirdwebClaimCondition(results[1].result);
+                } else if (results[2] && results[2].result && results[2].result !== "0x") {
+                    const startTs = parseInt(results[2].result, 16) * 1000;
+                    if (startTs > 0) {
+                        claimData = { startTime: startTs, priceEth: "0.00" };
+                    }
                 }
 
-                if (collectionName) break; // Successfully fetched from RPC!
+                if (collectionName || claimData) break; // Successfully fetched!
             }
         } catch(e) {
-            console.warn(`RPC node ${rpcUrl} attempted, trying next node...`);
+            console.warn(`RPC node ${rpcUrl} attempted, trying next...`);
         }
     }
 
     const finalName = collectionName || `COLLECTION (${shortenAddress(address)})`;
     const now = Date.now();
 
-    // If on-chain claim condition exists
-    if (claimData) {
-        return {
-            name: finalName,
-            contract: address,
-            network: network,
-            thumb: "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=200&auto=format&fit=crop&q=80",
-            supply: "On-Chain",
-            verified: true,
-            phases: [
-                {
-                    id: "oc_active",
-                    name: `${finalName} - ON-CHAIN MINT`,
-                    type: "Public",
-                    startTime: claimData.startTime || now,
-                    endTime: (claimData.startTime || now) + (86400 * 1000),
-                    priceEth: claimData.priceEth || "0.00",
-                    priceUsd: claimData.priceEth === "0.0000" || !claimData.priceEth ? "FREE" : `$${(parseFloat(claimData.priceEth) * 2600).toFixed(2)}`,
-                    limit: "1 PER WALLET"
-                }
-            ]
-        };
-    }
+    // If on-chain start time is detected
+    const phaseStart = claimData && claimData.startTime ? claimData.startTime : Date.parse("2026-09-11T23:00:00+08:00");
+    const phaseEnd = phaseStart + (3600 * 1000); // 1 hr window
 
-    // Default response when no active on-chain claim condition is found
     return {
         name: finalName,
         contract: address,
         network: network,
-        thumb: "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=200&auto=format&fit=crop&q=80",
-        supply: "On-Chain Verified",
+        thumb: "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=200&auto=format&fit=crop&q=80",
+        supply: "400",
         verified: true,
         phases: [
             {
-                id: "oc_pending",
-                name: `${finalName} - PUBLIC MINT`,
+                id: "rh_mint",
+                name: `${finalName.toLowerCase()}`,
                 type: "Public",
-                startTime: now,
-                endTime: now + (3600 * 1000 * 12),
-                priceEth: "0.00",
-                priceUsd: "FREE / ON-CHAIN",
+                startTime: phaseStart,
+                endTime: phaseEnd,
+                priceEth: claimData ? claimData.priceEth : "0.00",
+                priceUsd: "FREE",
                 limit: "1 PER WALLET"
             }
         ]
