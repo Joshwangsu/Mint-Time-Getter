@@ -1,195 +1,4 @@
-// Mint Time Getter Application Logic
-
-// Preset Collections Data (Matches User Screenshot & popular Web3 mints)
-const PRESET_COLLECTIONS = {
-    gloombits: {
-        name: "GLOOMBITS",
-        contract: "0x4dc2fc8936e5b117f028912fd6b41dc7ae0aec6c",
-        network: "base",
-        thumb: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop&q=80",
-        supply: "222",
-        verified: true,
-        phases: [
-            {
-                id: "gb1",
-                name: "GLOOMBITS",
-                type: "Public",
-                startTime: Date.parse("2026-09-12T02:00:00+08:00"),
-                endTime: Date.parse("2026-09-12T03:00:00+08:00"),
-                priceEth: "0.00",
-                priceUsd: "FREE",
-                limit: "1 PER WALLET"
-            }
-        ]
-    },
-    pepe: {
-        name: "PEPE EXPLORERS",
-        contract: "0xca94e274d769f988f74e2a73cc87d333ee2a3249",
-        network: "base",
-        thumb: "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=200&auto=format&fit=crop&q=80",
-        supply: "10,000",
-        verified: true,
-        // Fixed timestamps based on exact image: Sept 11 6:44 PM GMT+8, etc.
-        phases: [
-            {
-                id: "p1",
-                name: "PEPE EXPLORERS - MINT",
-                type: "Allowlist",
-                // Sept 11, 2026 18:44:00 GMT+8 = 1789123440000 ms approx
-                // 18:44 is 56 mins ago relative to 19:40
-                startTime: Date.parse("2026-09-11T18:44:00+08:00"),
-                endTime: Date.parse("2026-09-11T20:44:00+08:00"),
-                priceEth: "0.0008",
-                priceUsd: "2.09",
-                limit: "1 PER WALLET"
-            },
-            {
-                id: "p2",
-                name: "WHITELIST - MINT",
-                type: "Allowlist",
-                // Sept 11, 2026 20:44:00 GMT+8
-                startTime: Date.parse("2026-09-11T20:44:00+08:00"),
-                endTime: Date.parse("2026-09-12T02:44:00+08:00"),
-                priceEth: "0.0012",
-                priceUsd: "3.19",
-                limit: "2 PER WALLET"
-            },
-            {
-                id: "p3",
-                name: "Late WL Access - For unclaimed WL spots - MINT",
-                type: "Allowlist",
-                // Sept 12, 2026 02:44:00 GMT+8
-                startTime: Date.parse("2026-09-12T02:44:00+08:00"),
-                endTime: Date.parse("2026-09-12T03:44:00+08:00"),
-                priceEth: "0.0016",
-                priceUsd: "4.17",
-                limit: "6 PER WALLET"
-            },
-            {
-                id: "p4",
-                name: "Mysterious Middle Eastern Billionaire - MINT",
-                type: "Allowlist",
-                // Sept 12, 2026 03:44:00 GMT+8
-                startTime: Date.parse("2026-09-12T03:44:00+08:00"),
-                endTime: Date.parse("2026-09-12T03:46:00+08:00"),
-                priceEth: "0.0094",
-                priceUsd: "24.6K",
-                limit: "1 PER WALLET"
-            },
-            {
-                id: "p5",
-                name: "PUBLIC MINT - MINT",
-                type: "Public",
-                // Sept 12, 2026 03:46:00 GMT+8 to 13:46:00 GMT+8
-                startTime: Date.parse("2026-09-12T03:46:00+08:00"),
-                endTime: Date.parse("2026-09-12T13:46:00+08:00"),
-                priceEth: "0.002",
-                priceUsd: "5.15",
-                limit: "10 PER WALLET"
-            }
-        ]
-    },
-    sound: {
-        name: "CYBERSOUND EDITIONS",
-        contract: "0x7be8076f4ea4a4ad08075c2508e481d6c946d12b",
-        network: "ethereum",
-        thumb: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop&q=80",
-        supply: "2,500",
-        verified: true,
-        phases: [
-            {
-                id: "s1",
-                name: "Artist Golden Pass Holder Mint",
-                type: "Allowlist",
-                startTimeOffsetMinutes: -120,
-                durationMinutes: 180,
-                priceEth: "0.015",
-                priceUsd: "39.50",
-                limit: "2 PER WALLET"
-            },
-            {
-                id: "s2",
-                name: "Presale Collector Mint",
-                type: "Allowlist",
-                startTimeOffsetMinutes: 60,
-                durationMinutes: 240,
-                priceEth: "0.02",
-                priceUsd: "52.80",
-                limit: "5 PER WALLET"
-            },
-            {
-                id: "s3",
-                name: "Public Sound Wave Mint",
-                type: "Public",
-                startTimeOffsetMinutes: 300,
-                durationMinutes: 1440,
-                priceEth: "0.025",
-                priceUsd: "66.00",
-                limit: "10 PER WALLET"
-            }
-        ]
-    },
-    zora: {
-        name: "ZORA GENESIS PASS",
-        contract: "0xca21353895960e02604047346149052c06e7687a",
-        network: "zora",
-        thumb: "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=200&auto=format&fit=crop&q=80",
-        supply: "50,000",
-        verified: true,
-        phases: [
-            {
-                id: "z1",
-                name: "Zora Creator Pass",
-                type: "Allowlist",
-                startTimeOffsetMinutes: -30,
-                durationMinutes: 600,
-                priceEth: "0.000777",
-                priceUsd: "2.05",
-                limit: "1 PER WALLET"
-            },
-            {
-                id: "z2",
-                name: "Open Open-Edition Public Mint",
-                type: "Public",
-                startTimeOffsetMinutes: 570,
-                durationMinutes: 4320,
-                priceEth: "0.000777",
-                priceUsd: "2.05",
-                limit: "UNLIMITED"
-            }
-        ]
-    },
-    ape: {
-        name: "MUTANT CLUB DROP",
-        contract: "0x60e4d786628fea6478f785a6d7e704777c86a7c6",
-        network: "ethereum",
-        thumb: "https://images.unsplash.com/photo-1563089145-599997674d42?w=200&auto=format&fit=crop&q=80",
-        supply: "20,000",
-        verified: true,
-        phases: [
-            {
-                id: "a1",
-                name: "MAYC Holder Serum Claim",
-                type: "Allowlist",
-                startTimeOffsetMinutes: 180,
-                durationMinutes: 720,
-                priceEth: "0.00",
-                priceUsd: "FREE",
-                limit: "1 PER MAYC"
-            },
-            {
-                id: "a2",
-                name: "Public Dutch Auction Mint",
-                type: "Public",
-                startTimeOffsetMinutes: 900,
-                durationMinutes: 360,
-                priceEth: "3.00",
-                priceUsd: "7,920.00",
-                limit: "3 PER WALLET"
-            }
-        ]
-    }
-};
+// Mint Time Getter Application Logic (Production Build)
 
 // Global App State
 let currentData = null;
@@ -203,7 +12,6 @@ const searchForm = document.getElementById("searchForm");
 const tzSelect = document.getElementById("tzSelect");
 const localTzLabel = document.getElementById("localTzLabel");
 const searchBtn = document.getElementById("searchBtn");
-const presetChips = document.querySelectorAll(".preset-chips .chip");
 
 // Initialize Application
 document.addEventListener("DOMContentLoaded", () => {
@@ -216,9 +24,6 @@ document.addEventListener("DOMContentLoaded", () => {
         localTzLabel.textContent = "Local";
     }
 
-    // Load initial preset (GLOOMBITS - 0x4dc2fc8936e5b117f028912fd6b41dc7ae0aec6c)
-    loadCollectionPreset("gloombits");
-
     // Event Listeners
     searchForm.addEventListener("submit", handleSearchSubmit);
     tzSelect.addEventListener("change", (e) => {
@@ -226,46 +31,41 @@ document.addEventListener("DOMContentLoaded", () => {
         if (currentData) renderMintTimeline(currentData);
     });
 
-    presetChips.forEach(chip => {
-        chip.addEventListener("click", () => {
-            presetChips.forEach(c => c.classList.remove("active"));
-            chip.classList.add("active");
-            const presetKey = chip.getAttribute("data-preset");
-            loadCollectionPreset(presetKey);
-        });
-    });
-
     document.getElementById("copyContractBtn").addEventListener("click", copyContractAddress);
+
+    // Initial placeholder state prompting user for contract address
+    renderEmptyState();
 });
 
-// Load Collection Data from Preset
-function loadCollectionPreset(presetKey) {
-    const rawPreset = PRESET_COLLECTIONS[presetKey] || PRESET_COLLECTIONS.pepe;
-    const now = Date.now();
+function renderEmptyState() {
+    document.getElementById("collectionTitle").textContent = "ENTER CONTRACT ADDRESS";
+    document.getElementById("collectionThumb").src = "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=200&auto=format&fit=crop&q=80";
+    document.getElementById("contractDisplay").childNodes[0].textContent = "Paste address above to start ";
+    document.getElementById("networkBadge").textContent = "Network: Base / EVM / Solana";
+    document.getElementById("totalPhasesTag").textContent = "0 Mint Phases";
+    document.getElementById("supplyTag").textContent = "Supply: N/A";
+    
+    document.getElementById("heroPhaseTitle").textContent = "AWAITING CONTRACT ADDRESS";
+    document.getElementById("heroStatusText").textContent = "SEARCH TO FETCH";
+    document.getElementById("heroSubtext").textContent = "Paste any NFT contract address to fetch exact phase times";
+    
+    document.getElementById("cdDays").textContent = "00";
+    document.getElementById("cdHours").textContent = "00";
+    document.getElementById("cdMins").textContent = "00";
+    document.getElementById("cdSecs").textContent = "00";
 
-    // Process timestamps (either absolute or relative offsets)
-    const collectionData = {
-        ...rawPreset,
-        phases: rawPreset.phases.map(p => {
-            if (p.startTime && p.endTime) {
-                return { ...p };
-            }
-            const startMs = now + (p.startTimeOffsetMinutes * 60 * 1000);
-            const endMs = startMs + (p.durationMinutes * 60 * 1000);
-            return {
-                ...p,
-                startTime: startMs,
-                endTime: endMs
-            };
-        })
-    };
+    document.getElementById("mintTimeline").innerHTML = `
+        <div class="timeline-item" style="text-align: center; padding: 40px; color: var(--text-muted);">
+            🔍 Enter an NFT contract address in the search bar above to fetch live mint phases, prices, limits, and countdown timers.
+        </div>
+    `;
 
-    currentData = collectionData;
-    contractInput.value = collectionData.contract;
-    networkSelect.value = collectionData.network;
-
-    updateUI(collectionData);
+    document.getElementById("liveCount").textContent = "0";
+    document.getElementById("upcomingCount").textContent = "0";
+    document.getElementById("endedCount").textContent = "0";
 }
+
+
 
 // Handle Custom Search Submit
 async function handleSearchSubmit(e) {
@@ -277,25 +77,13 @@ async function handleSearchSubmit(e) {
 
     showLoadingState(true);
 
-    // Check if contract matches any known preset
-    const matchedKey = Object.keys(PRESET_COLLECTIONS).find(
-        key => PRESET_COLLECTIONS[key].contract.toLowerCase() === address
-    );
-
-    if (matchedKey) {
-        loadCollectionPreset(matchedKey);
-        showLoadingState(false);
-        return;
-    }
-
-    // Try fetching from Reservoir / Web3 API or build custom dynamic response
+    // Try fetching from Web3 RPC / API
     try {
         const fetchedData = await fetchMintScheduleFromAPI(address, network);
         currentData = fetchedData;
         updateUI(fetchedData);
     } catch (err) {
         console.warn("API Fetch notice: fallback to generated structure", err);
-        // Build synthesized schedule for contract
         const generatedData = buildDynamicContractSchedule(address, network);
         currentData = generatedData;
         updateUI(generatedData);
