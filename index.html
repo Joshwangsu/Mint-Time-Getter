@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mint Time & Phase Tracker | NFT Mint Schedule</title>
-    <meta name="description" content="Get exact mint times, countdowns in DD:HH:MM:SS, and phase schedules for any NFT collection contract address.">
+    <meta name="description" content="Get exact mint times, countdowns in DD:HH:MM:SS, and phase schedules for any NFT collection contract address. Powered by OpenSea API.">
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,13 +44,27 @@
 
         <!-- Search Bar Card -->
         <section class="search-section">
+            <!-- OpenSea API Key Row -->
+            <div class="apikey-row">
+                <span class="apikey-label">🔑 OpenSea API Key</span>
+                <input
+                    type="password"
+                    id="apiKeyInput"
+                    class="apikey-input"
+                    placeholder="Paste your OpenSea API key here (get it free at opensea.io/developers)"
+                    autocomplete="off"
+                    spellcheck="false"
+                />
+                <button type="button" id="toggleApiKey" class="icon-btn" title="Show/Hide">👁</button>
+            </div>
+
             <form id="searchForm" class="search-box">
                 <div class="input-wrapper">
                     <span class="search-icon">🔍</span>
                     <input 
                         type="text" 
                         id="contractInput" 
-                        placeholder="Enter NFT Contract Address (0x... or Solana)" 
+                        placeholder="Paste NFT Contract Address from OpenSea (0x...)" 
                         autocomplete="off"
                         spellcheck="false"
                         required
@@ -59,13 +73,14 @@
                 
                 <div class="network-select-wrapper">
                     <select id="networkSelect" class="styled-select network-select">
-                        <option value="robinhood" selected>Robinhood Chain</option>
-                        <option value="base">Base</option>
-                        <option value="ethereum">Ethereum Mainnet</option>
-                        <option value="arbitrum">Arbitrum</option>
+                        <option value="ethereum">Ethereum</option>
+                        <option value="base" selected>Base</option>
                         <option value="polygon">Polygon</option>
-                        <option value="zora">Zora</option>
+                        <option value="arbitrum">Arbitrum</option>
                         <option value="optimism">Optimism</option>
+                        <option value="zora">Zora</option>
+                        <option value="blast">Blast</option>
+                        <option value="ape_chain">Ape Chain</option>
                         <option value="solana">Solana</option>
                     </select>
                 </div>

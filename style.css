@@ -196,14 +196,48 @@ body {
     box-shadow: 0 0 20px var(--accent-green-glow);
 }
 
-.preset-container {
+.apikey-row {
     display: flex;
     align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-    padding-top: 10px;
-    border-top: 1px dashed var(--border-color);
+    gap: 10px;
+    padding: 10px 0 14px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 14px;
 }
+
+.apikey-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.apikey-input {
+    flex: 1;
+    background: #101014;
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    padding: 8px 12px;
+    border-radius: 8px;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.apikey-input:focus {
+    border-color: var(--accent-amber);
+    box-shadow: 0 0 10px var(--accent-amber-glow);
+}
+
+.apikey-input::placeholder {
+    color: var(--text-dim);
+    font-size: 0.8rem;
+}
+
+
+.preset-container {
+
 
 .preset-label {
     font-size: 0.8rem;
