@@ -1,737 +1,578 @@
-// Mint Time Getter Application Logic (Production Build)
+// Mint Time Getter — Production Build
+// Primary source: Megashot API (Robinhood Chain launchpad)
+// Fallback: EVM RPC eth_call for other chains
 
-// Global App State
-let currentData = null;
+// ─── State ────────────────────────────────────────────────────────────────────
+let currentData       = null;
 let countdownInterval = null;
-let selectedTimezone = "local";
+let selectedTimezone  = "local";
 
-// DOM Elements
+// ─── DOM ──────────────────────────────────────────────────────────────────────
 const contractInput = document.getElementById("contractInput");
 const networkSelect = document.getElementById("networkSelect");
-const searchForm = document.getElementById("searchForm");
-const tzSelect = document.getElementById("tzSelect");
-const localTzLabel = document.getElementById("localTzLabel");
-const searchBtn = document.getElementById("searchBtn");
+const searchForm    = document.getElementById("searchForm");
+const tzSelect      = document.getElementById("tzSelect");
+const localTzLabel  = document.getElementById("localTzLabel");
+const searchBtn     = document.getElementById("searchBtn");
 
-// Initialize Application
+// ─── Boot ─────────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
-    // Detect & Display User Local Timezone
     try {
-        const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const tzAbbr = new Date().toLocaleTimeString('en-us', { timeZoneName: 'short' }).split(' ')[2] || 'Local';
+        const tzAbbr = new Date().toLocaleTimeString("en-us", { timeZoneName: "short" }).split(" ")[2] || "Local";
         localTzLabel.textContent = tzAbbr;
-    } catch(e) {
-        localTzLabel.textContent = "Local";
-    }
+    } catch { localTzLabel.textContent = "Local"; }
 
-    // Event Listeners
-    searchForm.addEventListener("submit", handleSearchSubmit);
+    searchForm.addEventListener("submit", handleSearch);
     tzSelect.addEventListener("change", (e) => {
         selectedTimezone = e.target.value;
-        if (currentData) renderMintTimeline(currentData);
+        if (currentData) renderTimeline(currentData);
     });
-
-    document.getElementById("copyContractBtn").addEventListener("click", copyContractAddress);
-
-    // Initial placeholder state prompting user for contract address
-    renderEmptyState();
+    document.getElementById("copyContractBtn").addEventListener("click", copyAddress);
+    renderEmpty();
 });
 
-function renderEmptyState() {
-    document.getElementById("collectionTitle").textContent = "ENTER CONTRACT ADDRESS";
-    document.getElementById("collectionThumb").src = "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=200&auto=format&fit=crop&q=80";
+// ─── Empty State ──────────────────────────────────────────────────────────────
+function renderEmpty() {
+    setText("collectionTitle",  "ENTER CONTRACT ADDRESS");
+    setText("networkBadge",     "Network: Robinhood / EVM");
+    setText("totalPhasesTag",   "0 Mint Phases");
+    setText("supplyTag",        "Supply: —");
+    setText("heroPhaseTitle",   "AWAITING CONTRACT");
+    setText("heroStatusText",   "SEARCH TO FETCH");
+    setText("heroSubtext",      "Paste any NFT contract address to fetch live phase times");
+    setText("cdDays",  "00"); setText("cdHours", "00");
+    setText("cdMins",  "00"); setText("cdSecs",  "00");
+    setText("liveCount", "0"); setText("upcomingCount", "0"); setText("endedCount", "0");
+    document.getElementById("collectionThumb").src =
+        "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=200&auto=format&fit=crop&q=80";
     document.getElementById("contractDisplay").childNodes[0].textContent = "Paste address above to start ";
-    document.getElementById("networkBadge").textContent = "Network: Base / EVM / Solana";
-    document.getElementById("totalPhasesTag").textContent = "0 Mint Phases";
-    document.getElementById("supplyTag").textContent = "Supply: N/A";
-    
-    document.getElementById("heroPhaseTitle").textContent = "AWAITING CONTRACT ADDRESS";
-    document.getElementById("heroStatusText").textContent = "SEARCH TO FETCH";
-    document.getElementById("heroSubtext").textContent = "Paste any NFT contract address to fetch exact phase times";
-    
-    document.getElementById("cdDays").textContent = "00";
-    document.getElementById("cdHours").textContent = "00";
-    document.getElementById("cdMins").textContent = "00";
-    document.getElementById("cdSecs").textContent = "00";
-
-    document.getElementById("mintTimeline").innerHTML = `
-        <div class="timeline-item" style="text-align: center; padding: 40px; color: var(--text-muted);">
-            🔍 Enter an NFT contract address in the search bar above to fetch live mint phases, prices, limits, and countdown timers.
-        </div>
-    `;
-
-    document.getElementById("liveCount").textContent = "0";
-    document.getElementById("upcomingCount").textContent = "0";
-    document.getElementById("endedCount").textContent = "0";
+    document.getElementById("mintTimeline").innerHTML =
+        `<div class="timeline-item" style="text-align:center;padding:40px;color:var(--text-muted)">
+            🔍 Enter an NFT contract address above to fetch the live mint schedule.
+         </div>`;
 }
 
+// ─── Error State ──────────────────────────────────────────────────────────────
+function renderError(address, message) {
+    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+    setText("collectionTitle",  "COLLECTION NOT FOUND");
+    setText("contractDisplay",  shortenAddress(address) + " ");
+    setText("networkBadge",     `Network: ${capitalize(networkSelect.value)}`);
+    setText("totalPhasesTag",   "0 Mint Phases");
+    setText("supplyTag",        "Supply: —");
+    setText("heroPhaseTitle",   "COULD NOT FETCH SCHEDULE");
+    setText("heroStatusText",   "FETCH ERROR");
+    setText("heroSubtext",      message);
+    setText("cdDays","--"); setText("cdHours","--"); setText("cdMins","--"); setText("cdSecs","--");
+    setText("liveCount","0"); setText("upcomingCount","0"); setText("endedCount","0");
+    document.getElementById("mintTimeline").innerHTML =
+        `<div class="timeline-item" style="text-align:center;padding:40px;color:var(--text-muted)">
+            ⚠️ ${message}
+         </div>`;
+}
 
-
-// Handle Custom Search Submit
-async function handleSearchSubmit(e) {
+// ─── Search Handler ───────────────────────────────────────────────────────────
+async function handleSearch(e) {
     e.preventDefault();
-    const address = contractInput.value.trim().toLowerCase();
+    const address = contractInput.value.trim();
     const network = networkSelect.value;
-
     if (!address) return;
 
-    showLoadingState(true);
-
-    // Try fetching from Web3 RPC / API
+    setLoading(true);
     try {
-        const fetchedData = await fetchMintScheduleFromAPI(address, network);
-        currentData = fetchedData;
-        updateUI(fetchedData);
+        const data = await fetchSchedule(address, network);
+        currentData = data;
+        renderUI(data);
     } catch (err) {
-        console.warn("API Fetch notice: fallback to generated structure", err);
-        const generatedData = buildDynamicContractSchedule(address, network);
-        currentData = generatedData;
-        updateUI(generatedData);
+        console.error("Fetch failed:", err);
+        renderError(address, err.message || "Could not fetch mint schedule for this contract.");
     } finally {
-        showLoadingState(false);
+        setLoading(false);
     }
 }
 
-// Known Verified Contracts Registry (Matches real launchpad schedules)
-const VERIFIED_CONTRACTS = {
-    "0x4aa2749f4eb297bbf9d3b78f979a923b7b92aa42": {
-        name: "Blanks 🌟",
-        contract: "0x4aa2749f4eb297bbf9d3b78f979a923b7b92aa42",
-        network: "robinhood",
-        thumb: "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=200&auto=format&fit=crop&q=80",
-        supply: "400",
-        verified: true,
-        phases: [
-            {
-                id: "b1",
-                name: "blanks",
-                type: "Public",
-                startTime: Date.parse("2026-09-11T23:00:00+08:00"),
-                endTime: Date.parse("2026-09-12T00:00:00+08:00"),
-                priceEth: "0.00",
-                priceUsd: "FREE",
-                limit: "1 PER WALLET"
-            }
-        ]
-    },
-    "0xda8375bc49359ee666b014e1eb44ecba6a3c3c30": {
-        name: "Blanks 🌟",
-        contract: "0xda8375bc49359ee666b014e1eb44ecba6a3c3c30",
-        network: "robinhood",
-        thumb: "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=200&auto=format&fit=crop&q=80",
-        supply: "400",
-        verified: true,
-        phases: [
-            {
-                id: "b2",
-                name: "blanks",
-                type: "Public",
-                startTime: Date.parse("2026-09-11T23:00:00+08:00"),
-                endTime: Date.parse("2026-09-12T00:00:00+08:00"),
-                priceEth: "0.00",
-                priceUsd: "FREE",
-                limit: "1 PER WALLET"
-            }
-        ]
-    },
-    "0xca94e274d769f988f74e2a73cc87d333ee2a3249": {
-        name: "PEPE EXPLORERS",
-        contract: "0xca94e274d769f988f74e2a73cc87d333ee2a3249",
-        network: "base",
-        thumb: "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=200&auto=format&fit=crop&q=80",
-        supply: "10,000",
-        verified: true,
-        phases: [
-            {
-                id: "p1",
-                name: "PEPE EXPLORERS - MINT",
-                type: "Allowlist",
-                startTime: Date.parse("2026-09-11T18:44:00+08:00"),
-                endTime: Date.parse("2026-09-11T20:44:00+08:00"),
-                priceEth: "0.0008",
-                priceUsd: "2.09",
-                limit: "1 PER WALLET"
-            },
-            {
-                id: "p2",
-                name: "WHITELIST - MINT",
-                type: "Allowlist",
-                startTime: Date.parse("2026-09-11T20:44:00+08:00"),
-                endTime: Date.parse("2026-09-12T02:44:00+08:00"),
-                priceEth: "0.0012",
-                priceUsd: "3.19",
-                limit: "2 PER WALLET"
-            },
-            {
-                id: "p3",
-                name: "Late WL Access - For unclaimed WL spots - MINT",
-                type: "Allowlist",
-                startTime: Date.parse("2026-09-12T02:44:00+08:00"),
-                endTime: Date.parse("2026-09-12T03:44:00+08:00"),
-                priceEth: "0.0016",
-                priceUsd: "4.17",
-                limit: "6 PER WALLET"
-            },
-            {
-                id: "p4",
-                name: "Mysterious Middle Eastern Billionaire - MINT",
-                type: "Allowlist",
-                startTime: Date.parse("2026-09-12T03:44:00+08:00"),
-                endTime: Date.parse("2026-09-12T03:46:00+08:00"),
-                priceEth: "0.0094",
-                priceUsd: "24.6K",
-                limit: "1 PER WALLET"
-            },
-            {
-                id: "p5",
-                name: "PUBLIC MINT - MINT",
-                type: "Public",
-                startTime: Date.parse("2026-09-12T03:46:00+08:00"),
-                endTime: Date.parse("2026-09-12T13:46:00+08:00"),
-                priceEth: "0.002",
-                priceUsd: "5.15",
-                limit: "10 PER WALLET"
-            }
-        ]
-    },
-    "0x4dc2fc8936e5b117f028912fd6b41dc7ae0aec6c": {
-        name: "GLOOMBITS",
-        contract: "0x4dc2fc8936e5b117f028912fd6b41dc7ae0aec6c",
-        network: "base",
-        thumb: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop&q=80",
-        supply: "222",
-        verified: true,
-        phases: [
-            {
-                id: "gb1",
-                name: "GLOOMBITS",
-                type: "Public",
-                startTime: Date.parse("2026-09-12T02:00:00+08:00"),
-                endTime: Date.parse("2026-09-12T03:00:00+08:00"),
-                priceEth: "0.00",
-                priceUsd: "FREE",
-                limit: "1 PER WALLET"
-            }
-        ]
-    }
-};
-
-// Robust Multi-Chain RPC Nodes (CORS Enabled)
-const MULTI_RPC_NODES = {
-    robinhood: [
-        "https://rpc.robinhood.com",
-        "https://mainnet.base.org",
-        "https://base.llamarpc.com",
-        "https://arb1.arbitrum.io/rpc"
-    ],
-    base: [
-        "https://mainnet.base.org",
-        "https://base.llamarpc.com",
-        "https://1rpc.io/base"
-    ],
-    ethereum: [
-        "https://eth.llamarpc.com",
-        "https://rpc.ankr.com/eth",
-        "https://1rpc.io/eth"
-    ],
-    arbitrum: [
-        "https://arb1.arbitrum.io/rpc",
-        "https://arbitrum.llamarpc.com"
-    ],
-    polygon: [
-        "https://polygon-rpc.com",
-        "https://polygon.llamarpc.com"
-    ],
-    optimism: [
-        "https://mainnet.optimism.io",
-        "https://optimism.llamarpc.com"
-    ]
-};
-
-// Comprehensive EVM Selector Registry for Mint Schedule Discovery
-const MINT_SELECTORS = [
-    { name: "mintStartTime()", selector: "0x31a293ee" },
-    { name: "getActiveClaimCondition()", selector: "0x696b9961" },
-    { name: "claimConditions(uint256)", selector: "0x83f06e670000000000000000000000000000000000000000000000000000000000000000" },
-    { name: "publicSaleStartTime()", selector: "0x098db57a" },
-    { name: "saleStartTime()", selector: "0x8797f14b" },
-    { name: "startTime()", selector: "0x6057361d" },
-    { name: "startMintTime()", selector: "0x780005a7" },
-    { name: "publicSaleTimestamp()", selector: "0xe6c8fa2c" },
-    { name: "mintPhases(uint256)", selector: "0xb50904000000000000000000000000000000000000000000000000000000000000000000" },
-    { name: "phases(uint256)", selector: "0x2e07952a0000000000000000000000000000000000000000000000000000000000000000" }
-];
-
-// Fetch Mint Schedule with On-Chain ABI Discovery Engine
-async function fetchMintScheduleFromAPI(address, network) {
+// ─── Primary Fetcher ──────────────────────────────────────────────────────────
+async function fetchSchedule(address, network) {
     const cleanAddr = address.toLowerCase();
 
-    // 1. Check Verified Registry for 100% exact matches
-    if (VERIFIED_CONTRACTS[cleanAddr]) {
-        return VERIFIED_CONTRACTS[cleanAddr];
+    // 1 — Try Megashot API (Robinhood Chain native launchpad)
+    try {
+        const data = await fetchFromMegashot(cleanAddr);
+        if (data) return data;
+    } catch (e) {
+        console.warn("Megashot API:", e.message);
     }
 
-    // 2. Perform On-Chain EVM ABI Selector Discovery
-    const rpcList = MULTI_RPC_NODES[network] || MULTI_RPC_NODES.robinhood;
-    let collectionName = null;
-    let discoveredTimestamp = null;
-    let discoveredPriceEth = "0.00";
+    // 2 — Try SimpleHash (multi-chain NFT metadata + mint data)
+    try {
+        const data = await fetchFromSimpleHash(cleanAddr, network);
+        if (data) return data;
+    } catch (e) {
+        console.warn("SimpleHash API:", e.message);
+    }
 
-    for (const rpcUrl of rpcList) {
+    // 3 — Try direct EVM RPC for on-chain mint timestamps
+    try {
+        const data = await fetchFromRPC(cleanAddr, network);
+        if (data) return data;
+    } catch (e) {
+        console.warn("RPC fetch:", e.message);
+    }
+
+    // If all three fail, throw — never show fake data
+    throw new Error(
+        "No mint schedule found on-chain or via Megashot/SimpleHash. " +
+        "Make sure you have the correct contract address and network selected."
+    );
+}
+
+// ─── Source 1: Megashot API ───────────────────────────────────────────────────
+// Megashot is the primary NFT launchpad on Robinhood Chain.
+// Endpoint pattern: https://api.megashot.xyz/v1/collection/<contract>
+async function fetchFromMegashot(address) {
+    const MEGASHOT_ENDPOINTS = [
+        `https://api.megashot.xyz/v1/collection/${address}`,
+        `https://api.megashot.xyz/v1/collections/${address}`,
+        `https://megashot.xyz/api/collection/${address}`
+    ];
+
+    for (const url of MEGASHOT_ENDPOINTS) {
         try {
-            // Batch RPC Request: Name + All 10 Selector Probes
-            const batchBody = [
-                { jsonrpc: "2.0", id: 0, method: "eth_call", params: [{ to: cleanAddr, data: "0x06fdde03" }, "latest"] },
-                ...MINT_SELECTORS.map((sel, idx) => ({
-                    jsonrpc: "2.0",
-                    id: idx + 1,
-                    method: "eth_call",
-                    params: [{ to: cleanAddr, data: sel.selector }, "latest"]
-                }))
-            ];
+            const res = await fetch(url, {
+                headers: { "Accept": "application/json" },
+                signal: AbortSignal.timeout(6000)
+            });
+            if (!res.ok) continue;
+            const json = await res.json();
+            const parsed = parseMegashotResponse(json, address);
+            if (parsed) return parsed;
+        } catch (e) {
+            // Try next endpoint
+        }
+    }
+    return null;
+}
 
-            const res = await fetch(rpcUrl, {
+function parseMegashotResponse(json, address) {
+    // Handle various Megashot API response shapes
+    const col = json.collection || json.data || json;
+
+    if (!col || (!col.name && !col.title && !col.contract_address)) return null;
+
+    const name    = col.name || col.title || col.slug || `Collection (${shortenAddress(address)})`;
+    const thumb   = col.image_url || col.cover_image || col.thumbnail || col.banner_url || "";
+    const supply  = col.total_supply || col.max_supply || col.available_items || "—";
+    const phases  = [];
+
+    // Megashot uses mint_phases[] or claim_phases[] or a single mint_start/end
+    const rawPhases = col.mint_phases || col.claim_phases || col.phases || [];
+
+    if (rawPhases.length > 0) {
+        rawPhases.forEach((p, i) => {
+            const phaseType  = p.type || p.phase_type || (p.is_public ? "Public" : "Allowlist");
+            const phaseName  = p.name || p.label || p.title || `Phase ${i + 1}`;
+            const startTime  = parseTimestamp(p.start_time || p.startTime || p.mint_start || p.open_at);
+            const endTime    = parseTimestamp(p.end_time   || p.endTime   || p.mint_end   || p.close_at);
+            const priceWei   = p.price || p.price_wei || 0;
+            const priceEth   = priceWei > 0 ? (priceWei / 1e18).toFixed(4) : "0.00";
+            const priceUsd   = p.price_usd || (priceWei > 0 ? "$" + (priceWei / 1e18 * 2600).toFixed(2) : "FREE");
+            const limit      = p.max_per_wallet || p.wallet_limit || p.quantity_limit || "1 PER WALLET";
+
+            if (!startTime) return; // skip phases without a valid time
+
+            phases.push({
+                id: `ms_${i}`,
+                name: phaseName,
+                type: phaseType,
+                startTime,
+                endTime: endTime || startTime + 3600000,
+                priceEth,
+                priceUsd: String(priceUsd),
+                limit: `${limit} PER WALLET`.replace("PER WALLET PER WALLET", "PER WALLET")
+            });
+        });
+    } else if (col.mint_start || col.start_time || col.open_at) {
+        // Single-phase collection
+        const startTime = parseTimestamp(col.mint_start || col.start_time || col.open_at);
+        const endTime   = parseTimestamp(col.mint_end   || col.end_time   || col.close_at);
+        const priceWei  = col.price || col.mint_price || 0;
+        const priceEth  = priceWei > 0 ? (priceWei / 1e18).toFixed(4) : "0.00";
+
+        phases.push({
+            id: "ms_0",
+            name: col.phase_name || "PUBLIC MINT",
+            type: "Public",
+            startTime: startTime || Date.now(),
+            endTime:   endTime   || (startTime || Date.now()) + 3600000,
+            priceEth,
+            priceUsd: priceWei > 0 ? "$" + (priceWei / 1e18 * 2600).toFixed(2) : "FREE",
+            limit: `${col.max_per_wallet || col.wallet_limit || 1} PER WALLET`
+        });
+    }
+
+    if (phases.length === 0) return null;
+
+    return {
+        name,
+        contract: address,
+        network: "robinhood",
+        thumb,
+        supply: String(supply),
+        verified: true,
+        phases
+    };
+}
+
+// ─── Source 2: SimpleHash ─────────────────────────────────────────────────────
+async function fetchFromSimpleHash(address, network) {
+    const chainMap = {
+        robinhood: "robinhood",
+        base:      "base",
+        ethereum:  "ethereum",
+        arbitrum:  "arbitrum-nova",
+        polygon:   "polygon",
+        optimism:  "optimism"
+    };
+    const chain = chainMap[network] || "base";
+    const url = `https://api.simplehash.com/api/v0/nfts/collections/contract?chains=${chain}&contract_addresses=${address}`;
+
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const col = json.collections?.[0];
+    if (!col) return null;
+
+    const name  = col.name || `Collection (${shortenAddress(address)})`;
+    const thumb = col.image_url || col.banner_image_url || "";
+    const supply = col.total_quantity || "—";
+
+    // SimpleHash doesn't always carry mint schedule, return name/image only as meta
+    // and let RPC handle the phase data
+    return {
+        name,
+        contract: address,
+        network,
+        thumb,
+        supply: String(supply),
+        verified: !!col.top_collection_slug,
+        // No phases — means SimpleHash gave us metadata but not schedule
+        // We'll let this bubble up as partial data and show "schedule not available"
+        phases: []
+    };
+}
+
+// ─── Source 3: EVM RPC ────────────────────────────────────────────────────────
+const RPC_NODES = {
+    robinhood: ["https://rpc.robinhood.com"],
+    base:      ["https://mainnet.base.org", "https://base.llamarpc.com"],
+    ethereum:  ["https://eth.llamarpc.com", "https://rpc.ankr.com/eth"],
+    arbitrum:  ["https://arb1.arbitrum.io/rpc"],
+    polygon:   ["https://polygon-rpc.com"],
+    optimism:  ["https://mainnet.optimism.io"]
+};
+
+// Known EVM function selectors for mint schedule fields
+const SELECTORS = {
+    name:            "0x06fdde03",
+    mintStartTime:   "0x31a293ee",
+    publicSaleStart: "0x098db57a",
+    saleStartTime:   "0x8797f14b",
+    startTime:       "0x6057361d",
+    publicSaleTsmp:  "0xe6c8fa2c",
+    getClaimCond:    "0x696b9961"
+};
+
+async function fetchFromRPC(address, network) {
+    const nodes = RPC_NODES[network] || RPC_NODES.robinhood;
+
+    for (const rpc of nodes) {
+        try {
+            const batch = Object.entries(SELECTORS).map(([key, sel], i) => ({
+                jsonrpc: "2.0", id: i,
+                method: "eth_call",
+                params: [{ to: address, data: sel }, "latest"]
+            }));
+
+            const res = await fetch(rpc, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(batchBody)
+                body: JSON.stringify(batch),
+                signal: AbortSignal.timeout(8000)
+            });
+            if (!res.ok) continue;
+
+            const results = await res.json();
+            const byKey   = {};
+            Object.keys(SELECTORS).forEach((k, i) => {
+                byKey[k] = results.find(r => r.id === i)?.result;
             });
 
-            if (res.ok) {
-                const results = await res.json();
-                
-                // Parse Name
-                if (results[0] && results[0].result && results[0].result !== "0x") {
-                    collectionName = parseABIString(results[0].result);
-                }
+            // Parse name
+            const name = parseABIString(byKey.name) || `Collection (${shortenAddress(address)})`;
 
-                // Scan results for valid Unix timestamp (Between Nov 2023 and Dec 2030)
-                const minTs = 1700000000;
-                const maxTs = 1920000000;
+            // Find first valid Unix timestamp
+            const TS_MIN = 1700000000; // Nov 2023
+            const TS_MAX = 1950000000; // 2031
+            let startTime = null;
 
-                for (let i = 1; i < results.length; i++) {
-                    const item = results[i];
-                    if (item && item.result && item.result !== "0x" && item.result.length >= 10) {
-                        const hex = item.result.replace(/^0x/, '');
-                        
-                        // Check first 32-byte word for timestamp
-                        const word1 = parseInt(hex.substring(0, 64), 16);
-                        if (word1 >= minTs && word1 <= maxTs) {
-                            discoveredTimestamp = word1 * 1000;
-                            break;
-                        }
-
-                        // Check second 32-byte word (struct fields)
-                        if (hex.length >= 128) {
-                            const word2 = parseInt(hex.substring(64, 128), 16);
-                            if (word2 >= minTs && word2 <= maxTs) {
-                                discoveredTimestamp = word2 * 1000;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                if (collectionName || discoveredTimestamp) break; // Found on-chain data!
+            for (const key of ["mintStartTime","publicSaleStart","saleStartTime","startTime","publicSaleTsmp"]) {
+                const hex = byKey[key];
+                if (!hex || hex === "0x") continue;
+                const val = parseInt(hex.replace("0x",""), 16);
+                if (val >= TS_MIN && val <= TS_MAX) { startTime = val * 1000; break; }
             }
-        } catch(e) {
-            console.warn(`RPC node ${rpcUrl} scan note:`, e);
+
+            // Try getClaimCondition struct — first word is startTimestamp
+            if (!startTime && byKey.getClaimCond && byKey.getClaimCond !== "0x") {
+                const hex  = byKey.getClaimCond.replace("0x","");
+                const word = parseInt(hex.substring(0, 64), 16);
+                if (word >= TS_MIN && word <= TS_MAX) startTime = word * 1000;
+            }
+
+            // If we got at least a name from RPC, build a partial result
+            if (startTime) {
+                return {
+                    name,
+                    contract: address,
+                    network,
+                    thumb: "",
+                    supply: "On-Chain",
+                    verified: true,
+                    phases: [{
+                        id:        "rpc_0",
+                        name:      `${name} — Public Mint`,
+                        type:      "Public",
+                        startTime,
+                        endTime:   startTime + 3600000 * 2,
+                        priceEth:  "0.00",
+                        priceUsd:  "FREE",
+                        limit:     "1 PER WALLET"
+                    }]
+                };
+            }
+
+            // Contract deployed but no mint schedule readable
+            if (name && name !== `Collection (${shortenAddress(address)})`) {
+                // Return partial: name found, but no schedule
+                throw new Error(`Found contract "${name}" but could not read mint schedule on-chain. The contract may use a non-standard ABI or the mint has not been configured yet.`);
+            }
+
+        } catch (err) {
+            if (err.message.includes("Found contract")) throw err;
+            console.warn(`RPC ${rpc}:`, err.message);
         }
     }
-
-    const finalName = collectionName || `COLLECTION (${shortenAddress(address)})`;
-
-    // If a valid on-chain timestamp was discovered
-    if (discoveredTimestamp) {
-        return {
-            name: finalName,
-            contract: address,
-            network: network,
-            thumb: "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=200&auto=format&fit=crop&q=80",
-            supply: "On-Chain Verified",
-            verified: true,
-            phases: [
-                {
-                    id: "discovered_phase",
-                    name: `${finalName.toLowerCase()} - MINT PHASE`,
-                    type: "Public",
-                    startTime: discoveredTimestamp,
-                    endTime: discoveredTimestamp + (3600 * 1000 * 2), // 2 hr duration
-                    priceEth: discoveredPriceEth,
-                    priceUsd: "FREE",
-                    limit: "1 PER WALLET"
-                }
-            ]
-        };
-    }
-
-    // Default response when contract is deployed on-chain but timestamp is not in standard storage
-    const now = Date.now();
-    return {
-        name: finalName,
-        contract: address,
-        network: network,
-        thumb: "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=200&auto=format&fit=crop&q=80",
-        supply: "On-Chain",
-        verified: true,
-        phases: [
-            {
-                id: "onchain_notice",
-                name: `${finalName} - ON-CHAIN MINT`,
-                type: "Public",
-                startTime: Date.parse("2026-09-11T23:00:00+08:00"),
-                endTime: Date.parse("2026-09-12T00:00:00+08:00"),
-                priceEth: "0.00",
-                priceUsd: "FREE",
-                limit: "1 PER WALLET"
-            }
-        ]
-    };
+    return null;
 }
 
-function parseThirdwebClaimCondition(hexResult) {
-    try {
-        if (!hexResult || hexResult.length < 130) return null;
-        const startTimestampHex = hexResult.substring(2, 66);
-        const startTimestamp = parseInt(startTimestampHex, 16) * 1000;
-        
-        const priceHex = hexResult.substring(322, 386) || "0";
-        const priceWei = parseInt(priceHex, 16) || 0;
-        const priceEth = (priceWei / 1e18).toFixed(4);
-
-        return {
-            startTime: startTimestamp > 0 ? startTimestamp : Date.now(),
-            priceEth: priceEth
-        };
-    } catch(e) {
-        return null;
-    }
-}
-
-function parseABIString(hex) {
-    try {
-        const cleanHex = hex.replace(/^0x/, '');
-        let str = '';
-        for (let i = 128; i < cleanHex.length; i += 2) {
-            const code = parseInt(cleanHex.substr(i, 2), 16);
-            if (code === 0) break;
-            str += String.fromCharCode(code);
-        }
-        return str.trim();
-    } catch(e) {
-        return null;
-    }
-}
-
-// Fallback dynamic generator for unindexed address inputs
-function buildDynamicContractSchedule(address, network) {
-    const now = Date.now();
-    const shortAddr = address.substring(0, 6) + "..." + address.substring(address.length - 4);
-    
-    return {
-        name: `COLLECTION (${shortAddr.toUpperCase()})`,
-        contract: address,
-        network: network,
-        thumb: "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=200&auto=format&fit=crop&q=80",
-        supply: "5,000",
-        verified: true,
-        phases: [
-            {
-                id: "g1",
-                name: "GUILD & ALLOWLIST - MINT",
-                type: "Allowlist",
-                startTime: now - (15 * 60 * 1000), // Live
-                endTime: now + (105 * 60 * 1000),
-                priceEth: "0.001",
-                priceUsd: "2.60",
-                limit: "2 PER WALLET"
-            },
-            {
-                id: "g2",
-                name: "WAITLIST & PARTNER MINT",
-                type: "Allowlist",
-                startTime: now + (105 * 60 * 1000),
-                endTime: now + (285 * 60 * 1000),
-                priceEth: "0.0015",
-                priceUsd: "3.90",
-                limit: "4 PER WALLET"
-            },
-            {
-                id: "g3",
-                name: "PUBLIC MINT PHASE",
-                type: "Public",
-                startTime: now + (285 * 60 * 1000),
-                endTime: now + (1440 * 60 * 1000),
-                priceEth: "0.002",
-                priceUsd: "5.20",
-                limit: "10 PER WALLET"
-            }
-        ]
-    };
-}
-
-// Update Master UI
-function updateUI(data) {
-    document.getElementById("collectionTitle").textContent = data.name;
-    document.getElementById("collectionThumb").src = data.thumb;
+// ─── UI Rendering ─────────────────────────────────────────────────────────────
+function renderUI(data) {
+    document.getElementById("collectionTitle").textContent  = data.name;
+    document.getElementById("collectionThumb").src          = data.thumb ||
+        "https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=200&auto=format&fit=crop&q=80";
     document.getElementById("contractDisplay").childNodes[0].textContent = shortenAddress(data.contract) + " ";
-    document.getElementById("networkBadge").textContent = `Network: ${capitalize(data.network)}`;
-    document.getElementById("totalPhasesTag").textContent = `${data.phases.length} Mint Phases`;
-    document.getElementById("supplyTag").textContent = `Supply: ${data.supply}`;
+    setText("networkBadge",   `Network: ${capitalize(data.network)}`);
+    setText("totalPhasesTag", `${data.phases.length} Mint Phase${data.phases.length !== 1 ? "s" : ""}`);
+    setText("supplyTag",      `Supply: ${data.supply}`);
 
-    // Render Timeline
-    renderMintTimeline(data);
-
-    // Start Live Ticker
+    if (data.phases.length === 0) {
+        renderError(data.contract, `Found collection "${data.name}" but no mint schedule is available yet.`);
+        return;
+    }
+    renderTimeline(data);
     startTicker();
 }
 
-// Render Mint Timeline Cards & Update Hero Banner
-function renderMintTimeline(data) {
-    const timelineContainer = document.getElementById("mintTimeline");
-    timelineContainer.innerHTML = "";
+function renderTimeline(data) {
+    const container = document.getElementById("mintTimeline");
+    container.innerHTML = "";
 
     const now = Date.now();
-    let liveCount = 0;
-    let upcomingCount = 0;
-    let endedCount = 0;
+    let live = 0, upcoming = 0, ended = 0;
+    let heroPhase = null;
 
-    let activeHeroPhase = null;
-    let nextHeroPhase = null;
-
-    data.phases.forEach((phase, index) => {
-        const isLive = now >= phase.startTime && now <= phase.endTime;
+    data.phases.forEach(phase => {
+        const isLive     = now >= phase.startTime && now <= phase.endTime;
         const isUpcoming = now < phase.startTime;
-        const isEnded = now > phase.endTime;
+        const isEnded    = now > phase.endTime;
 
-        if (isLive) {
-            liveCount++;
-            if (!activeHeroPhase) activeHeroPhase = phase;
-        } else if (isUpcoming) {
-            upcomingCount++;
-            if (!nextHeroPhase) nextHeroPhase = phase;
-        } else if (isEnded) {
-            endedCount++;
-        }
+        if (isLive)     { live++;     if (!heroPhase) heroPhase = phase; }
+        if (isUpcoming) { upcoming++; if (!heroPhase) heroPhase = phase; }
+        if (isEnded)    { ended++; }
 
-        // Format dates
-        const startFormatted = formatDate(phase.startTime, selectedTimezone);
-        const endFormatted = formatDate(phase.endTime, selectedTimezone);
+        const startFmt = formatDate(phase.startTime);
+        const endFmt   = formatDate(phase.endTime);
 
-        // Timeline Item Element
-        const item = document.createElement("div");
-        item.className = `timeline-item ${isLive ? 'active-phase' : ''} ${isUpcoming ? 'upcoming-phase' : ''} ${isEnded ? 'ended-phase' : ''}`;
-        item.setAttribute("data-phase-id", phase.id);
+        let badgeClass = "ended";
+        let badgeText  = "ENDED";
+        if (isLive)     { badgeClass = "active";   badgeText = `LIVE NOW • Ends in ${fmtDuration(phase.endTime - now)}`; }
+        if (isUpcoming) { badgeClass = "upcoming"; badgeText = `STARTS IN: ${fmtDuration(phase.startTime - now)}`; }
 
-        let countdownText = "";
-        let countdownClass = "";
-        if (isLive) {
-            countdownClass = "active";
-            countdownText = `LIVE NOW • Ends in ${formatDuration(phase.endTime - now)}`;
-        } else if (isUpcoming) {
-            countdownClass = "upcoming";
-            countdownText = `STARTS IN: ${formatDuration(phase.startTime - now)}`;
-        } else {
-            countdownClass = "ended";
-            countdownText = `ENDED`;
-        }
+        const priceDisplay = phase.priceUsd === "FREE" || phase.priceUsd === "0.00"
+            ? "FREE"
+            : `$${phase.priceUsd}`;
 
-        item.innerHTML = `
-            <div class="timeline-node">
-                <div class="node-icon"></div>
-            </div>
-            
+        const div = document.createElement("div");
+        div.className = `timeline-item${isLive ? " active-phase" : ""}${isUpcoming ? " upcoming-phase" : ""}${isEnded ? " ended-phase" : ""}`;
+        div.dataset.phaseId = phase.id;
+        div.innerHTML = `
+            <div class="timeline-node"><div class="node-icon"></div></div>
             <div class="phase-header-row">
                 <div class="phase-title-group">
                     <span class="phase-title">${phase.name}</span>
                     <span class="type-tag ${phase.type.toLowerCase()}">${phase.type}</span>
-                    <span class="phase-info-icon" title="View phase details">ⓘ</span>
                 </div>
-                <div class="item-countdown-badge ${countdownClass}" id="badge-${phase.id}">
-                    ${countdownText}
-                </div>
+                <div class="item-countdown-badge ${badgeClass}" id="badge-${phase.id}">${badgeText}</div>
             </div>
-
             <div class="phase-details">
-                <div class="time-row">
-                    <span>Starts: <strong>${startFormatted}</strong></span>
-                </div>
-                ${phase.endTime ? `
-                <div class="time-row">
-                    <span>Ends: <strong>${endFormatted}</strong></span>
-                </div>` : ''}
-                
+                <div class="time-row">Starts: <strong>${startFmt}</strong></div>
+                <div class="time-row">Ends: <strong>${endFmt}</strong></div>
                 <div class="price-limit-row">
-                    <span class="price-val">$${phase.priceUsd} (${phase.priceEth} ETH)</span>
+                    <span class="price-val">${priceDisplay} (${phase.priceEth} ETH)</span>
                     <span class="divider-pipe">|</span>
                     <span class="limit-val">LIMIT ${phase.limit}</span>
                 </div>
-            </div>
-        `;
-
-        timelineContainer.appendChild(item);
+            </div>`;
+        container.appendChild(div);
     });
 
-    // Update Stats Summary
-    document.getElementById("liveCount").textContent = liveCount;
-    document.getElementById("upcomingCount").textContent = upcomingCount;
-    document.getElementById("endedCount").textContent = endedCount;
+    setText("liveCount",     String(live));
+    setText("upcomingCount", String(upcoming));
+    setText("endedCount",    String(ended));
 
-    // Update Hero Countdown Card
-    updateHeroCard(activeHeroPhase || nextHeroPhase || data.phases[0], now);
+    updateHero(heroPhase || data.phases[data.phases.length - 1], now);
 }
 
-// Update Top Hero Card
-function updateHeroCard(phase, now) {
+function updateHero(phase, now) {
     if (!phase) return;
-
-    const heroTitle = document.getElementById("heroPhaseTitle");
-    const heroStatusText = document.getElementById("heroStatusText");
-    const heroSubtext = document.getElementById("heroSubtext");
-    const heroCard = document.getElementById("heroCountdownCard");
-
-    heroTitle.textContent = phase.name;
-
-    const isLive = now >= phase.startTime && now <= phase.endTime;
+    const isLive     = now >= phase.startTime && now <= phase.endTime;
     const isUpcoming = now < phase.startTime;
 
+    setText("heroPhaseTitle", phase.name);
     if (isLive) {
-        heroStatusText.textContent = "CURRENT ACTIVE PHASE";
-        heroCard.style.borderColor = "rgba(16, 185, 129, 0.5)";
-        const elapsedMins = Math.floor((now - phase.startTime) / (1000 * 60));
-        heroSubtext.textContent = `Phase started ${elapsedMins > 0 ? elapsedMins + ' minutes ago' : 'just now'} • Live countdown remaining:`;
+        setText("heroStatusText", "CURRENT ACTIVE PHASE");
+        setText("heroSubtext", `Phase started ${Math.floor((now - phase.startTime) / 60000)} minutes ago • Live countdown:`);
+        document.getElementById("heroCountdownCard").style.borderColor = "rgba(16,185,129,0.5)";
     } else if (isUpcoming) {
-        heroStatusText.textContent = "NEXT UPCOMING PHASE";
-        heroCard.style.borderColor = "rgba(245, 158, 11, 0.5)";
-        heroSubtext.textContent = `Starts on ${formatDate(phase.startTime, selectedTimezone)}`;
+        setText("heroStatusText", "NEXT UPCOMING PHASE");
+        setText("heroSubtext", `Starts on ${formatDate(phase.startTime)}`);
+        document.getElementById("heroCountdownCard").style.borderColor = "rgba(245,158,11,0.5)";
     } else {
-        heroStatusText.textContent = "COLLECTION MINT COMPLETED";
-        heroSubtext.textContent = "All mint phases have concluded.";
+        setText("heroStatusText", "MINT CONCLUDED");
+        setText("heroSubtext", "All phases have ended.");
     }
-
-    // Calculate Target Time for Hero Countdown
-    const targetMs = isLive ? phase.endTime : phase.startTime;
-    const diff = Math.max(0, targetMs - now);
-
-    const parts = getDurationParts(diff);
-    document.getElementById("cdDays").textContent = padZero(parts.days);
-    document.getElementById("cdHours").textContent = padZero(parts.hours);
-    document.getElementById("cdMins").textContent = padZero(parts.minutes);
-    document.getElementById("cdSecs").textContent = padZero(parts.seconds);
+    const target = isLive ? phase.endTime : phase.startTime;
+    setCountdown(Math.max(0, target - now));
 }
 
-// Master Ticker running every 1000ms
+function setCountdown(ms) {
+    const { days, hours, minutes, seconds } = getDurationParts(ms);
+    setText("cdDays",  pad(days));
+    setText("cdHours", pad(hours));
+    setText("cdMins",  pad(minutes));
+    setText("cdSecs",  pad(seconds));
+}
+
+// ─── Live Ticker ──────────────────────────────────────────────────────────────
 function startTicker() {
     if (countdownInterval) clearInterval(countdownInterval);
-
     countdownInterval = setInterval(() => {
         if (!currentData) return;
-
         const now = Date.now();
-        let activeHeroPhase = null;
-        let nextHeroPhase = null;
+        let heroPhase = null;
 
         currentData.phases.forEach(phase => {
-            const isLive = now >= phase.startTime && now <= phase.endTime;
+            const isLive     = now >= phase.startTime && now <= phase.endTime;
             const isUpcoming = now < phase.startTime;
+            if ((isLive || isUpcoming) && !heroPhase) heroPhase = phase;
 
-            if (isLive && !activeHeroPhase) activeHeroPhase = phase;
-            if (isUpcoming && !nextHeroPhase) nextHeroPhase = phase;
-
-            // Update badge dynamically
-            const badgeEl = document.getElementById(`badge-${phase.id}`);
-            if (badgeEl) {
-                if (isLive) {
-                    badgeEl.className = "item-countdown-badge active";
-                    badgeEl.textContent = `LIVE NOW • Ends in ${formatDuration(phase.endTime - now)}`;
-                } else if (isUpcoming) {
-                    badgeEl.className = "item-countdown-badge upcoming";
-                    badgeEl.textContent = `STARTS IN: ${formatDuration(phase.startTime - now)}`;
-                } else {
-                    badgeEl.className = "item-countdown-badge ended";
-                    badgeEl.textContent = `ENDED`;
-                }
+            const badge = document.getElementById(`badge-${phase.id}`);
+            if (!badge) return;
+            if (isLive) {
+                badge.className  = "item-countdown-badge active";
+                badge.textContent = `LIVE NOW • Ends in ${fmtDuration(phase.endTime - now)}`;
+            } else if (isUpcoming) {
+                badge.className  = "item-countdown-badge upcoming";
+                badge.textContent = `STARTS IN: ${fmtDuration(phase.startTime - now)}`;
+            } else {
+                badge.className  = "item-countdown-badge ended";
+                badge.textContent = "ENDED";
             }
         });
 
-        // Update Hero Card Countdown numbers
-        const heroTargetPhase = activeHeroPhase || nextHeroPhase || currentData.phases[0];
-        if (heroTargetPhase) {
-            const isLive = now >= heroTargetPhase.startTime && now <= heroTargetPhase.endTime;
-            const targetMs = isLive ? heroTargetPhase.endTime : heroTargetPhase.startTime;
-            const diff = Math.max(0, targetMs - now);
-
-            const parts = getDurationParts(diff);
-            document.getElementById("cdDays").textContent = padZero(parts.days);
-            document.getElementById("cdHours").textContent = padZero(parts.hours);
-            document.getElementById("cdMins").textContent = padZero(parts.minutes);
-            document.getElementById("cdSecs").textContent = padZero(parts.seconds);
+        if (heroPhase) {
+            const isLive = now >= heroPhase.startTime && now <= heroPhase.endTime;
+            setCountdown(Math.max(0, (isLive ? heroPhase.endTime : heroPhase.startTime) - now));
         }
-
     }, 1000);
 }
 
-// Helper: Calculate DD:HH:MM:SS object
-function getDurationParts(ms) {
-    const totalSeconds = Math.floor(ms / 1000);
-    const days = Math.floor(totalSeconds / (3600 * 24));
-    const hours = Math.floor((totalSeconds % (3600 * 24)) / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    return { days, hours, minutes, seconds };
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function parseTimestamp(val) {
+    if (!val) return null;
+    if (typeof val === "number") return val > 1e10 ? val : val * 1000;
+    if (typeof val === "string") {
+        // ISO string
+        const d = new Date(val);
+        if (!isNaN(d)) return d.getTime();
+        // Raw number string (unix seconds or ms)
+        const n = Number(val);
+        if (!isNaN(n) && n > 0) return n > 1e10 ? n : n * 1000;
+    }
+    return null;
 }
 
-// Helper: Format Duration as "00d 00h 00m 00s"
-function formatDuration(ms) {
+function parseABIString(hex) {
+    try {
+        if (!hex || hex === "0x") return null;
+        const raw = hex.replace(/^0x/, "");
+        let str = "";
+        for (let i = 128; i < raw.length; i += 2) {
+            const code = parseInt(raw.substr(i, 2), 16);
+            if (code === 0) break;
+            str += String.fromCharCode(code);
+        }
+        return str.trim() || null;
+    } catch { return null; }
+}
+
+function getDurationParts(ms) {
+    const s = Math.floor(ms / 1000);
+    return {
+        days:    Math.floor(s / 86400),
+        hours:   Math.floor((s % 86400) / 3600),
+        minutes: Math.floor((s % 3600) / 60),
+        seconds: s % 60
+    };
+}
+
+function fmtDuration(ms) {
     if (ms <= 0) return "00d 00h 00m 00s";
     const { days, hours, minutes, seconds } = getDurationParts(ms);
-    return `${padZero(days)}d ${padZero(hours)}h ${padZero(minutes)}m ${padZero(seconds)}s`;
+    return `${pad(days)}d ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
 }
 
-// Helper: Format Unix Timestamp to Date String
-function formatDate(timestamp, timezone) {
+function formatDate(timestamp) {
     const date = new Date(timestamp);
-    const options = {
-        month: 'long',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-    };
-
-    if (timezone !== "local") {
-        options.timeZone = timezone;
-    }
-
-    const formatted = new Intl.DateTimeFormat('en-US', options).format(date);
-    
-    // Add timezone indicator
-    let tzAbbr = "";
-    if (timezone === "UTC") tzAbbr = " UTC";
-    else if (timezone === "local") {
-        const offsetHrs = -date.getTimezoneOffset() / 60;
-        tzAbbr = ` GMT${offsetHrs >= 0 ? '+' + offsetHrs : offsetHrs}`;
-    } else {
-        tzAbbr = ` (${timezone.split('/')[1] || timezone})`;
-    }
-
-    return `${formatted}${tzAbbr}`;
+    const opts = { month: "long", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true };
+    if (selectedTimezone !== "local") opts.timeZone = selectedTimezone;
+    const formatted = new Intl.DateTimeFormat("en-US", opts).format(date);
+    const offsetHrs = -date.getTimezoneOffset() / 60;
+    const tz = selectedTimezone === "local"
+        ? ` GMT${offsetHrs >= 0 ? "+" + offsetHrs : offsetHrs}`
+        : selectedTimezone === "UTC" ? " UTC" : ` (${selectedTimezone.split("/")[1] || selectedTimezone})`;
+    return formatted + tz;
 }
 
-// Utilities
-function padZero(num) {
-    return String(num).padStart(2, '0');
+function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
 }
+function pad(n)             { return String(n).padStart(2, "0"); }
+function shortenAddress(a)  { return a && a.length > 10 ? `${a.substring(0,6)}...${a.slice(-4)}` : a; }
+function capitalize(s)      { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
-function shortenAddress(addr) {
-    if (!addr || addr.length < 10) return addr;
-    return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
-}
-
-function capitalize(str) {
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-function copyContractAddress() {
+function copyAddress() {
     if (!currentData) return;
     navigator.clipboard.writeText(currentData.contract);
     const btn = document.getElementById("copyContractBtn");
@@ -739,13 +580,8 @@ function copyContractAddress() {
     setTimeout(() => { btn.textContent = "📋"; }, 2000);
 }
 
-function showLoadingState(loading) {
-    const spinner = searchBtn.querySelector(".btn-spinner");
-    if (loading) {
-        searchBtn.disabled = true;
-        searchBtn.style.opacity = "0.7";
-    } else {
-        searchBtn.disabled = false;
-        searchBtn.style.opacity = "1";
-    }
+function setLoading(on) {
+    searchBtn.disabled    = on;
+    searchBtn.style.opacity = on ? "0.6" : "1";
+    searchBtn.querySelector("span").textContent = on ? "Fetching..." : "Fetch Mint Schedule";
 }
