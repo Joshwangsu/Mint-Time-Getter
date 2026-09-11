@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mint Time & Phase Tracker | NFT Mint Schedule</title>
+    <meta name="description" content="Get exact mint times, countdowns in DD:HH:MM:SS, and phase schedules for any NFT collection contract address.">
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="9" stroke="#10B981" stroke-width="2"/>
+                        <path d="M12 7V12L15 15" stroke="#10B981" stroke-width="2" stroke-linecap="round"/>
+                        <circle cx="12" cy="12" r="3" fill="#10B981" fill-opacity="0.3"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1>MINT TIME GETTER</h1>
+                    <p class="subtitle">Exact phase schedules, pricing, wallet limits & live countdowns</p>
+                </div>
+            </div>
+            
+            <div class="header-right">
+                <div class="timezone-picker">
+                    <label for="tzSelect">Timezone:</label>
+                    <select id="tzSelect" class="styled-select">
+                        <option value="local" selected>Local Time (<span id="localTzLabel">GMT+8</span>)</option>
+                        <option value="UTC">UTC (Coordinated Universal Time)</option>
+                        <option value="America/New_York">EST / EDT (New York)</option>
+                        <option value="Europe/London">GMT / BST (London)</option>
+                        <option value="Asia/Tokyo">JST (Tokyo)</option>
+                    </select>
+                </div>
+            </div>
+        </header>
+
+        <!-- Search Bar Card -->
+        <section class="search-section">
+            <form id="searchForm" class="search-box">
+                <div class="input-wrapper">
+                    <span class="search-icon">🔍</span>
+                    <input 
+                        type="text" 
+                        id="contractInput" 
+                        placeholder="Enter NFT Contract Address (0x... or Solana)" 
+                        autocomplete="off"
+                        spellcheck="false"
+                        required
+                    />
+                </div>
+                
+                <div class="network-select-wrapper">
+                    <select id="networkSelect" class="styled-select network-select">
+                        <option value="ethereum">Ethereum Mainnet</option>
+                        <option value="base" selected>Base</option>
+                        <option value="arbitrum">Arbitrum</option>
+                        <option value="polygon">Polygon</option>
+                        <option value="zora">Zora</option>
+                        <option value="optimism">Optimism</option>
+                        <option value="solana">Solana</option>
+                    </select>
+                </div>
+
+                <button type="submit" id="searchBtn" class="btn-primary">
+                    <span>Fetch Mint Schedule</span>
+                    <span class="btn-spinner hidden"></span>
+                </button>
+            </form>
+
+            <!-- Quick Preset Chips -->
+            <div class="preset-container">
+                <span class="preset-label">Quick Load Sample Collections:</span>
+                <div class="preset-chips">
+                    <button class="chip active" data-preset="gloombits">
+                        <span class="chip-dot"></span> GLOOMBITS (0x4dc2...ec6c)
+                    </button>
+                    <button class="chip" data-preset="pepe">
+                        <span class="chip-dot"></span> PEPE EXPLORERS (0xca94...3249)
+                    </button>
+                    <button class="chip" data-preset="sound">
+                        <span class="chip-dot"></span> CyberSound Edition (3 Phases)
+                    </button>
+                    <button class="chip" data-preset="zora">
+                        <span class="chip-dot"></span> Zora Genesis Pass (2 Phases)
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Collection Header Banner -->
+            <div id="collectionBanner" class="collection-banner">
+                <div class="collection-info">
+                    <img id="collectionThumb" src="https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=120&auto=format&fit=crop&q=80" alt="Collection Avatar" class="collection-thumb">
+                    <div class="collection-text">
+                        <div class="collection-title-row">
+                            <h2 id="collectionTitle">PEPE EXPLORERS</h2>
+                            <span id="verifiedBadge" class="badge-verified">✓ Verified Contract</span>
+                        </div>
+                        <p id="contractDisplay" class="contract-address">0xa35...4b92 <button id="copyContractBtn" class="icon-btn" title="Copy Address">📋</button></p>
+                        <div class="collection-meta-tags">
+                            <span id="networkBadge" class="meta-tag">Network: Base</span>
+                            <span id="totalPhasesTag" class="meta-tag">5 Mint Phases</span>
+                            <span id="supplyTag" class="meta-tag">Supply: 10,000</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hero Countdown Card -->
+                <div id="heroCountdownCard" class="hero-countdown-card">
+                    <div class="hero-status-header">
+                        <span class="status-indicator live"></span>
+                        <span id="heroStatusText">CURRENT ACTIVE PHASE</span>
+                    </div>
+                    <div id="heroPhaseTitle" class="hero-phase-name">PEPE EXPLORERS - MINT</div>
+                    
+                    <div class="countdown-display">
+                        <div class="time-block">
+                            <span id="cdDays" class="time-val">00</span>
+                            <span class="time-unit">DAYS</span>
+                        </div>
+                        <span class="time-colon">:</span>
+                        <div class="time-block">
+                            <span id="cdHours" class="time-val">00</span>
+                            <span class="time-unit">HRS</span>
+                        </div>
+                        <span class="time-colon">:</span>
+                        <div class="time-block">
+                            <span id="cdMins" class="time-val">00</span>
+                            <span class="time-unit">MINS</span>
+                        </div>
+                        <span class="time-colon">:</span>
+                        <div class="time-block">
+                            <span id="cdSecs" class="time-val">00</span>
+                            <span class="time-unit">SECS</span>
+                        </div>
+                    </div>
+
+                    <div id="heroSubtext" class="hero-subtext">Phase started 50 minutes ago • Ends when sold out</div>
+                </div>
+            </div>
+
+            <!-- Schedule Header & Filters -->
+            <div class="schedule-section-header">
+                <h3 class="section-title">MINT SCHEDULE</h3>
+                <div class="schedule-stats">
+                    <span class="stat-item"><span class="dot green"></span> Live Now: <strong id="liveCount">1</strong></span>
+                    <span class="stat-item"><span class="dot amber"></span> Upcoming: <strong id="upcomingCount">4</strong></span>
+                    <span class="stat-item"><span class="dot grey"></span> Ended: <strong id="endedCount">0</strong></span>
+                </div>
+            </div>
+
+            <!-- Mint Timeline (Inspired by reference screenshot) -->
+            <div class="mint-timeline-wrapper">
+                <div id="mintTimeline" class="mint-timeline">
+                    <!-- Dynamic timeline items rendered via app.js -->
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>Mint Time Getter &copy; 2026 • Real-time EVM & Solana Mint Schedule & Countdown Engine</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
