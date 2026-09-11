@@ -178,6 +178,12 @@ const VERIFIED_CONTRACTS = {
 
 // Robust Multi-Chain RPC Nodes (CORS Enabled)
 const MULTI_RPC_NODES = {
+    robinhood: [
+        "https://rpc.robinhood.com",
+        "https://mainnet.base.org",
+        "https://base.llamarpc.com",
+        "https://arb1.arbitrum.io/rpc"
+    ],
     base: [
         "https://mainnet.base.org",
         "https://base.llamarpc.com",
